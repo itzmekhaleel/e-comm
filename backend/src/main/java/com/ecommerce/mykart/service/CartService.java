@@ -14,7 +14,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -39,8 +39,6 @@ public class CartService {
         Cart cart = new Cart();
         cart.setUser(user);
         cart.setCartItems(new ArrayList<>());
-        Random random = new Random();
-        cart.setId(random.nextLong());
         
         // Save and return the cart with generated ID
         return cartRepository.save(cart);
@@ -50,8 +48,14 @@ public class CartService {
      * Get or create a cart for a guest user using guest identifier
      */
     public Cart getOrCreateGuestCart(String guestIdentifier) {
+        // If guest identifier is empty, create a temporary one for this request
         if (guestIdentifier == null || guestIdentifier.isEmpty()) {
-            throw new IllegalArgumentException("Guest identifier cannot be null or empty");
+            // For guest users with no identifier, we'll create a temporary cart
+            // but won't save it to the database until items are actually added
+            Cart tempCart = new Cart();
+            tempCart.setGuestIdentifier(""); // Temporary identifier
+            tempCart.setCartItems(new ArrayList<>());
+            return tempCart;
         }
         
         Optional<Cart> existingCart = cartRepository.findByGuestIdentifier(guestIdentifier);
@@ -83,11 +87,22 @@ public class CartService {
      * Add item to cart for guest user
      */
     public Cart addItemToCart(String guestIdentifier, Long productId, Integer quantity) {
+        // Handle empty guest identifier by creating a proper one
+        String actualGuestIdentifier = guestIdentifier;
         if (guestIdentifier == null || guestIdentifier.isEmpty()) {
-            throw new IllegalArgumentException("Guest identifier cannot be null or empty");
+            actualGuestIdentifier = UUID.randomUUID().toString();
         }
-        Cart cart = getOrCreateGuestCart(guestIdentifier);
-        return addItemToCartInternal(cart, productId, quantity);
+        
+        Cart cart = getOrCreateGuestCart(actualGuestIdentifier);
+        Cart result = addItemToCartInternal(cart, productId, quantity);
+        
+        // If we created a new identifier, make sure it's set on the cart
+        if ((guestIdentifier == null || guestIdentifier.isEmpty()) && result.getGuestIdentifier() == null) {
+            result.setGuestIdentifier(actualGuestIdentifier);
+            result = cartRepository.save(result);
+        }
+        
+        return result;
     }
 
     /**
@@ -98,10 +113,29 @@ public class CartService {
         if (productId == null || quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Product ID and quantity must be valid");
         }
+        
+        System.out.println("DEBUG: Attempting to add product with ID: " + productId);
+        
+        // Check if product exists
+        long productCount = productRepository.count();
+        System.out.println("DEBUG: Total products in database: " + productCount);
+        
+        Optional<Product> productOpt = productRepository.findById(productId);
+        if (!productOpt.isPresent()) {
+            System.out.println("DEBUG: Product with ID " + productId + " not found in database");
+            // List some available product IDs for debugging
+            List<Product> products = productRepository.findAll();
+            System.out.println("DEBUG: Available product IDs: ");
+            products.stream().limit(10).forEach(p -> System.out.println("  - ID: " + p.getId() + ", Name: " + p.getName()));
+            throw new RuntimeException("Product not found with ID: " + productId);
+        }
+        
+        Product product = productOpt.get();
+        System.out.println("DEBUG: Found product - ID: " + product.getId() + ", Name: " + product.getName());
 
         // Get the product
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found with ID: " + productId));
+        // Product product = productRepository.findById(productId)
+        //         .orElseThrow(() -> new RuntimeException("Product not found with ID: " + productId));
 
         // Ensure cart has an ID - critical for foreign key constraint
         if (cart.getId() == null) {
@@ -120,6 +154,9 @@ public class CartService {
             CartItem item = existingItem.get();
             item.setQuantity(item.getQuantity() + quantity);
             item.setPrice(product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+            
+            // Save the item explicitly to ensure foreign key constraint
+            return cartRepository.save(cart);
         } else {
             // Create new cart item with proper references
             CartItem newItem = new CartItem();
@@ -130,10 +167,10 @@ public class CartService {
             
             // Add to cart's item collection
             cart.getCartItems().add(newItem);
+            
+            // Save the cart which will cascade to save cart items
+            return cartRepository.save(cart);
         }
-
-        // Save the cart which will cascade to save cart items
-        return cartRepository.save(cart);
     }
 
     /**

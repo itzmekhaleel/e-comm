@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import authService from '../services/auth.service';
 import cartService from '../services/cart.service';
+import productService from '../services/product.service';
 import { useToast } from '../contexts/ToastContext';
 import './Navbar.css';
 
@@ -12,19 +13,23 @@ const Navbar = () => {
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState('India');
   const [cartCount, setCartCount] = useState(0);
+  const [compareCount, setCompareCount] = useState(0);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [showMegaMenu, setShowMegaMenu] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const searchInputRef = useRef(null);
 
   const loadCartCount = () => {
     const user = authService.getCurrentUser();
     if (user) {
       cartService.getCart()
         .then(response => {
-          if (response.data && response.data.cartItems) {
-            const count = response.data.cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
+          if (response && response.cartItems) {
+            const count = response.cartItems.reduce((total, item) => total + (item.quantity || 0), 0);
             setCartCount(count);
           }
         })
@@ -33,6 +38,11 @@ const Navbar = () => {
           // Don't dispatch cartUpdated event here to prevent circular dependency
         });
     }
+  };
+
+  const loadCompareCount = () => {
+    const compareList = JSON.parse(localStorage.getItem('compareList') || '[]');
+    setCompareCount(compareList.length);
   };
 
   useEffect(() => {
@@ -44,6 +54,9 @@ const Navbar = () => {
     // Load cart count
     loadCartCount();
     
+    // Load compare count
+    loadCompareCount();
+    
     // Listen for cart updates
     const handleCartUpdated = () => {
       // Add a small delay to prevent rapid successive calls
@@ -52,11 +65,18 @@ const Navbar = () => {
       }, 100);
     };
     
-    window.addEventListener('cartUpdated', handleCartUpdated);
+    // Listen for compare updates
+    const handleCompareUpdated = () => {
+      loadCompareCount();
+    };
     
-    // Cleanup event listener
+    window.addEventListener('cartUpdated', handleCartUpdated);
+    window.addEventListener('compareUpdated', handleCompareUpdated);
+    
+    // Cleanup event listeners
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdated);
+      window.removeEventListener('compareUpdated', handleCompareUpdated);
     };
   }, []);
 
@@ -64,6 +84,7 @@ const Navbar = () => {
     authService.logout();
     setCurrentUser(undefined);
     setCartCount(0);
+    setCompareCount(0);
     setShowProfileDropdown(false);
     addToast('You have been logged out successfully', 'info');
     navigate('/login');
@@ -73,6 +94,7 @@ const Navbar = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/products?search=${encodeURIComponent(searchQuery)}`);
+      setShowSuggestions(false);
     }
   };
 
@@ -102,6 +124,11 @@ const Navbar = () => {
         setShowMegaMenu(false);
         setActiveCategory(null);
       }
+      
+      // Close search suggestions if clicked outside
+      if (showSuggestions && !event.target.closest('.search-form')) {
+        setShowSuggestions(false);
+      }
     };
 
     const handleEscapeKey = (event) => {
@@ -112,6 +139,9 @@ const Navbar = () => {
           setShowMegaMenu(false);
           setActiveCategory(null);
         }
+        if (showSuggestions) {
+          setShowSuggestions(false);
+        }
       }
     };
 
@@ -121,7 +151,7 @@ const Navbar = () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscapeKey);
     };
-  }, [showProfileDropdown, showLocationDropdown, showMegaMenu]);
+  }, [showProfileDropdown, showLocationDropdown, showMegaMenu, showSuggestions]);
 
   // Define locations with their corresponding currencies
   const locations = [
@@ -153,10 +183,17 @@ const Navbar = () => {
 
   const handleSearchFocus = () => {
     setIsSearchFocused(true);
+    if (searchQuery.trim()) {
+      setShowSuggestions(true);
+    }
   };
 
   const handleSearchBlur = () => {
     setIsSearchFocused(false);
+    // Add a small delay to allow clicking on suggestions
+    setTimeout(() => {
+      setShowSuggestions(false);
+    }, 200);
   };
 
   const handleSearchKeyDown = (e) => {
@@ -168,7 +205,75 @@ const Navbar = () => {
     if (e.key === 'Escape') {
       setSearchQuery('');
       e.target.blur();
+      setShowSuggestions(false);
     }
+    
+    // Handle arrow keys for suggestions
+    if (showSuggestions && searchSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const currentIndex = Array.from(searchInputRef.current.parentNode.querySelectorAll('.suggestion-item')).findIndex(el => el.classList.contains('active'));
+        const nextIndex = currentIndex < searchSuggestions.length - 1 ? currentIndex + 1 : 0;
+        const suggestionItems = searchInputRef.current.parentNode.querySelectorAll('.suggestion-item');
+        suggestionItems.forEach((item, index) => {
+          item.classList.toggle('active', index === nextIndex);
+        });
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const currentIndex = Array.from(searchInputRef.current.parentNode.querySelectorAll('.suggestion-item')).findIndex(el => el.classList.contains('active'));
+        const prevIndex = currentIndex > 0 ? currentIndex - 1 : searchSuggestions.length - 1;
+        const suggestionItems = searchInputRef.current.parentNode.querySelectorAll('.suggestion-item');
+        suggestionItems.forEach((item, index) => {
+          item.classList.toggle('active', index === prevIndex);
+        });
+      } else if (e.key === 'Enter') {
+        const activeItem = searchInputRef.current.parentNode.querySelector('.suggestion-item.active');
+        if (activeItem) {
+          e.preventDefault();
+          const index = Array.from(searchInputRef.current.parentNode.querySelectorAll('.suggestion-item')).indexOf(activeItem);
+          handleSuggestionClick(searchSuggestions[index]);
+        }
+      }
+    }
+  };
+
+  // Fetch search suggestions
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.trim().length > 1) {
+        try {
+          // In a real application, this would call an API endpoint for suggestions
+          // For now, we'll simulate with sample data
+          const sampleSuggestions = [
+            `iPhone ${searchQuery}`,
+            `Samsung ${searchQuery}`,
+            `${searchQuery} laptop`,
+            `${searchQuery} headphones`,
+            `${searchQuery} smartphone`
+          ];
+          setSearchSuggestions(sampleSuggestions);
+          setShowSuggestions(true);
+        } catch (error) {
+          console.error('Error fetching suggestions:', error);
+          setSearchSuggestions([]);
+        }
+      } else {
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+      }
+    };
+
+    const delayDebounce = setTimeout(() => {
+      fetchSuggestions();
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
+
+  const handleSuggestionClick = (suggestion) => {
+    setSearchQuery(suggestion);
+    setShowSuggestions(false);
+    navigate(`/products?search=${encodeURIComponent(suggestion)}`);
   };
 
   // Mega menu categories and subcategories
@@ -294,17 +399,35 @@ const Navbar = () => {
                 <option>Books</option>
                 <option>Fashion</option>
               </select>
-              <input
-                type="text"
-                className={`search-input ${isSearchFocused ? 'focused' : ''}`}
-                placeholder="Search MyKart"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-                onKeyDown={handleSearchKeyDown}
-                aria-label="Search products"
-              />
+              <div className="search-input-container">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className={`search-input ${isSearchFocused ? 'focused' : ''}`}
+                  placeholder="Search MyKart"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={handleSearchFocus}
+                  onBlur={handleSearchBlur}
+                  onKeyDown={handleSearchKeyDown}
+                  aria-label="Search products"
+                  autoComplete="off"
+                />
+                {showSuggestions && searchSuggestions.length > 0 && (
+                  <div className="search-suggestions">
+                    {searchSuggestions.map((suggestion, index) => (
+                      <div
+                        key={index}
+                        className="suggestion-item"
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur on click
+                      >
+                        🔍 {suggestion}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button type="submit" className="search-button" aria-label="Search">
                 🔍
               </button>
@@ -400,6 +523,14 @@ const Navbar = () => {
                 </Link>
               </div>
             )}
+
+            <Link to="/compare" className="nav-compare" aria-label={`Compare products with ${compareCount} items`}>
+              <div className="compare-icon">🔄</div>
+              <span className="compare-text">Compare</span>
+              {compareCount > 0 && (
+                <span className="compare-count">{compareCount}</span>
+              )}
+            </Link>
 
             <Link to="/cart" className="nav-cart" aria-label={`Shopping cart with ${cartCount} items`}>
               <div className="cart-icon">🛒</div>

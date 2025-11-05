@@ -82,7 +82,7 @@ public class CartController {
     /**
      * Add item to cart
      */
-    @PostMapping("/items")  
+    @PostMapping("/items")
     public ResponseEntity<?> addItemToCart(
             @RequestParam Long productId, 
             @RequestParam Integer quantity,
@@ -291,8 +291,9 @@ public class CartController {
             }
         }
         
-        // If no cookie found, create a temporary identifier
-        return UUID.randomUUID().toString();
+        // If no cookie found, return empty string to indicate no existing cart
+        // The service will handle creating a new cart if needed
+        return "";
     }
 
     /**

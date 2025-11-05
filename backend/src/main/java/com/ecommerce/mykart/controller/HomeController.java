@@ -8,6 +8,6 @@ public class HomeController {
 
     @GetMapping("/")
     public String home() {
-        return "Welcome to Amazon Replica Backend!";
+        return "Welcome to MyKart Backend!";
     }
 }

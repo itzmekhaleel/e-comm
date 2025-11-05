@@ -19,9 +19,12 @@ const ProductList = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [priceFilter, setPriceFilter] = useState({ min: '', max: '' });
+  const [showFilters, setShowFilters] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const [itemsPerPage] = useState(12); // Show 12 products per page
 
   /**
    * Load products from backend
@@ -115,6 +118,39 @@ const ProductList = () => {
         addToast('Failed to filter products. Please try again.', 'error');
       });
   }, [addToast, loadProducts]);
+
+  /**
+   * Apply all filters
+   */
+  const applyFilters = useCallback(() => {
+    setLoading(true);
+    
+    // In a real app, this would make an API call with all filters
+    // For now, we'll filter the existing products
+    let filteredProducts = [...products];
+    
+    // Apply brand filter
+    if (selectedBrands.length > 0) {
+      filteredProducts = filteredProducts.filter(product => 
+        selectedBrands.includes(product.brand)
+      );
+    }
+    
+    // Apply price filter
+    if (priceFilter.min || priceFilter.max) {
+      const minPrice = priceFilter.min ? parseFloat(priceFilter.min) : 0;
+      const maxPrice = priceFilter.max ? parseFloat(priceFilter.max) : Infinity;
+      
+      filteredProducts = filteredProducts.filter(product => {
+        const price = product.discountedPrice || product.price;
+        return price >= minPrice && price <= maxPrice;
+      });
+    }
+    
+    setProducts(filteredProducts);
+    setLoading(false);
+    addToast('Filters applied successfully', 'success');
+  }, [products, selectedBrands, priceFilter, addToast]);
 
   /**
    * Load products and categories on component mount
@@ -218,16 +254,61 @@ const ProductList = () => {
   };
 
   /**
+   * Handle brand filter change
+   */
+  const handleBrandFilter = (e) => {
+    const brand = e.target.value;
+    if (brand) {
+      if (!selectedBrands.includes(brand)) {
+        setSelectedBrands([...selectedBrands, brand]);
+      }
+    }
+  };
+
+  /**
+   * Remove a brand from filters
+   */
+  const removeBrandFilter = (brand) => {
+    setSelectedBrands(selectedBrands.filter(b => b !== brand));
+  };
+
+  /**
+   * Handle price filter change
+   */
+  const handlePriceFilterChange = (e) => {
+    const { name, value } = e.target;
+    setPriceFilter(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  /**
+   * Apply price filters
+   */
+  const applyPriceFilters = () => {
+    applyFilters();
+  };
+
+  /**
    * Reset all filters
    */
   const resetFilters = () => {
     setSelectedBrands([]);
-    setPriceRange({ min: 0, max: 100000 });
+    setPriceFilter({ min: '', max: '' });
     setCategoryFilter('');
     setSearchTerm('');
     setSortOption('');
     setCurrentPage(1);
+    loadProducts();
     addToast('Filters reset', 'info');
+  };
+
+  /**
+   * Toggle filter visibility on mobile
+   */
+  const toggleFilters = () => {
+    setShowFilters(!showFilters);
   };
 
   /**
@@ -242,7 +323,7 @@ const ProductList = () => {
       { name: "Sony WH-1000XM5", category: "Electronics", price: 29999, brand: "Sony", discount: 20, rating: 4.6, reviews: 1800 }
     ];
 
-    return Array.from({ length: 5 }, (_, i) => {
+    return Array.from({ length: 20 }, (_, i) => {
       const productInfo = productData[i % productData.length];
       
       const productId = i + 1;
@@ -342,6 +423,30 @@ const ProductList = () => {
   };
 
   /**
+   * Toggle wishlist for a product
+   */
+  const toggleWishlist = (productId) => {
+    // In a real implementation, this would call an API
+    addToast('Added to wishlist!', 'success');
+  };
+
+  /**
+   * Compare products
+   */
+  const compareProducts = (productId) => {
+    // In a real implementation, this would add to a comparison list
+    addToast('Product added to comparison!', 'success');
+  };
+
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProducts = products.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(products.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  /**
    * Render the component
    */
   return (
@@ -366,147 +471,311 @@ const ProductList = () => {
             </button>
           </form>
           <button 
-            className="reset-filters-btn"
-            onClick={resetFilters}
-            aria-label="Reset all filters"
+            className="mobile-filters-toggle"
+            onClick={toggleFilters}
+            aria-label="Toggle filters"
           >
-            Reset Filters
+            Filters
           </button>
         </div>
 
-        {/* Filters and Sorting */}
-        <div className="filters-section">
-          <div className="filter-group">
-            <label htmlFor="category-filter">Category:</label>
-            <select 
-              id="category-filter"
-              value={categoryFilter}
-              onChange={handleCategoryFilter}
-              className="filter-select"
-              aria-label="Filter by category"
-            >
-              <option value="">All Categories</option>
-              {categories.map((category, index) => (
-                <option key={index} value={category}>{category}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label htmlFor="brand-filter">Brand:</label>
-            <select 
-              id="brand-filter"
-              value={selectedBrands[0] || ''}
-              onChange={(e) => setSelectedBrands(e.target.value ? [e.target.value] : [])}
-              className="filter-select"
-              aria-label="Filter by brand"
-            >
-              <option value="">All Brands</option>
-              {brands.map((brand, index) => (
-                <option key={index} value={brand}>{brand}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="filter-group sort-options">
-            <label htmlFor="sort-filter">Sort By:</label>
-            <select 
-              id="sort-filter"
-              value={sortOption}
-              onChange={handleSort}
-              className="filter-select"
-              aria-label="Sort products"
-            >
-              <option value="">Default</option>
-              <option value="name-asc">Name (A-Z)</option>
-              <option value="name-desc">Name (Z-A)</option>
-              <option value="price-asc">Price (Low to High)</option>
-              <option value="price-desc">Price (High to Low)</option>
-              <option value="rating-desc">Rating (High to Low)</option>
-              <option value="discount-desc">Discount (High to Low)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Loading state */}
-        {loading && (
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p>Loading products...</p>
-          </div>
-        )}
-
-        {/* Products grid */}
-        {!loading && products.length > 0 && (
-          <>
-            <div className="products-info">
-              <p>Showing {products.length} product{products.length !== 1 ? 's' : ''}</p>
+        <div className="product-list-content">
+          {/* Filters Sidebar */}
+          <div className={`filters-sidebar ${showFilters ? 'show' : ''}`}>
+            <div className="filters-header">
+              <h2>Filters</h2>
+              <button 
+                className="close-filters"
+                onClick={toggleFilters}
+                aria-label="Close filters"
+              >
+                ×
+              </button>
             </div>
-            <div className="products-grid">
-              {products.map(product => (
-                <div key={product.id} className="product-card">
-                  <Link to={`/products/${product.id}`}>
-                    <div className="product-image">
-                      <img 
-                        src={product.imageUrl} 
-                        alt={product.name} 
-                        onError={(e) => {
-                          e.target.src = '/images/placeholder.png';
-                        }}
-                      />
-                      {product.discountPercentage > 0 && (
-                        <div className="discount-badge">{product.discountPercentage}% off</div>
-                      )}
-                      <div className="rating-badge">
-                        <span className="stars">★</span> {product.rating.toFixed(1)}
-                      </div>
-                    </div>
-                    <h3>{product.name}</h3>
-                    <p className="product-category">{product.category}</p>
-                    <div className="product-price">
-                      <span className="current-price">{formatCurrency(product.discountedPrice)}</span>
-                      {product.discountPercentage > 0 && (
-                        <span className="original-price">{formatCurrency(product.price)}</span>
-                      )}
-                    </div>
-                    <div className="product-reviews">
-                      ({product.reviewCount} reviews)
-                    </div>
-                  </Link>
-                  <button 
-                    className="add-to-cart-btn" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (product.inCart) {
-                        handleGoToCart();
-                      } else {
-                        handleAddToCart(product.id, product.name);
-                      }
-                    }}
-                    disabled={product.addingToCart || (product.stockQuantity || 0) === 0}
-                    aria-label={product.inCart ? `Go to cart with ${product.name}` : `Add ${product.name} to cart`}
-                  >
-                    {(product.stockQuantity || 0) === 0 ? 'Out of Stock' : 
-                     (product.addingToCart ? 'Adding...' : 
-                     (product.inCart ? 'Go to Cart' : 'Add to Cart'))}
-                  </button>
+            
+            <div className="filter-group">
+              <label htmlFor="category-filter">Category:</label>
+              <select 
+                id="category-filter"
+                value={categoryFilter}
+                onChange={handleCategoryFilter}
+                className="filter-select"
+                aria-label="Filter by category"
+              >
+                <option value="">All Categories</option>
+                {categories.map((category, index) => (
+                  <option key={index} value={category}>{category}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-group">
+              <label htmlFor="brand-filter">Brand:</label>
+              <select 
+                id="brand-filter"
+                value={selectedBrands[0] || ''}
+                onChange={handleBrandFilter}
+                className="filter-select"
+                aria-label="Filter by brand"
+              >
+                <option value="">All Brands</option>
+                {brands.map((brand, index) => (
+                  <option key={index} value={brand}>{brand}</option>
+                ))}
+              </select>
+              
+              {/* Selected brands display */}
+              {selectedBrands.length > 0 && (
+                <div className="selected-brands">
+                  {selectedBrands.map((brand, index) => (
+                    <span key={index} className="selected-brand-tag">
+                      {brand}
+                      <button 
+                        onClick={() => removeBrandFilter(brand)}
+                        aria-label={`Remove ${brand} filter`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          </>
-        )}
 
-        {/* No results state */}
-        {!loading && products.length === 0 && (
-          <div className="no-results">
-            <div className="no-results-icon">🔍</div>
-            <h3>No products found</h3>
-            <p>Try adjusting your search or filter criteria</p>
-            <button className="reset-filters-btn" onClick={resetFilters}>
-              Reset Filters
+            <div className="filter-group">
+              <label>Price Range:</label>
+              <div className="price-inputs">
+                <input
+                  type="number"
+                  name="min"
+                  placeholder="Min"
+                  value={priceFilter.min}
+                  onChange={handlePriceFilterChange}
+                  className="price-input"
+                />
+                <span>-</span>
+                <input
+                  type="number"
+                  name="max"
+                  placeholder="Max"
+                  value={priceFilter.max}
+                  onChange={handlePriceFilterChange}
+                  className="price-input"
+                />
+              </div>
+              <button 
+                className="apply-price-filters"
+                onClick={applyPriceFilters}
+              >
+                Apply
+              </button>
+            </div>
+
+            <div className="filter-group sort-options">
+              <label htmlFor="sort-filter">Sort By:</label>
+              <select 
+                id="sort-filter"
+                value={sortOption}
+                onChange={handleSort}
+                className="filter-select"
+                aria-label="Sort products"
+              >
+                <option value="">Default</option>
+                <option value="name-asc">Name (A-Z)</option>
+                <option value="name-desc">Name (Z-A)</option>
+                <option value="price-asc">Price (Low to High)</option>
+                <option value="price-desc">Price (High to Low)</option>
+                <option value="rating-desc">Rating (High to Low)</option>
+                <option value="discount-desc">Discount (High to Low)</option>
+              </select>
+            </div>
+
+            <button 
+              className="reset-filters-btn"
+              onClick={resetFilters}
+              aria-label="Reset all filters"
+            >
+              Reset All Filters
             </button>
           </div>
-        )}
+
+          {/* Main Content */}
+          <div className="product-list-main">
+            {/* Active Filters Display */}
+            {(categoryFilter || selectedBrands.length > 0 || priceFilter.min || priceFilter.max) && (
+              <div className="active-filters">
+                <span>Active Filters:</span>
+                {categoryFilter && (
+                  <span className="filter-tag">
+                    Category: {categoryFilter}
+                    <button onClick={() => setCategoryFilter('')}>×</button>
+                  </span>
+                )}
+                {selectedBrands.map((brand, index) => (
+                  <span key={index} className="filter-tag">
+                    Brand: {brand}
+                    <button onClick={() => removeBrandFilter(brand)}>×</button>
+                  </span>
+                ))}
+                {(priceFilter.min || priceFilter.max) && (
+                  <span className="filter-tag">
+                    Price: {priceFilter.min || '0'} - {priceFilter.max || '∞'}
+                    <button onClick={() => setPriceFilter({ min: '', max: '' })}>×</button>
+                  </span>
+                )}
+                <button className="clear-all-filters" onClick={resetFilters}>
+                  Clear All
+                </button>
+              </div>
+            )}
+
+            {/* Loading state */}
+            {loading && (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p>Loading products...</p>
+              </div>
+            )}
+
+            {/* Products grid */}
+            {!loading && products.length > 0 && (
+              <>
+                <div className="products-info">
+                  <p>Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, products.length)} of {products.length} product{products.length !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="products-grid">
+                  {currentProducts.map(product => (
+                    <div key={product.id} className="product-card">
+                      <Link to={`/products/${product.id}`}>
+                        <div className="product-image">
+                          <img 
+                            src={product.imageUrl} 
+                            alt={product.name} 
+                            onError={(e) => {
+                              e.target.src = '/images/placeholder.png';
+                            }}
+                          />
+                          {product.discountPercentage > 0 && (
+                            <div className="discount-badge">{product.discountPercentage}% off</div>
+                          )}
+                          <div className="rating-badge">
+                            <span className="stars">★</span> {product.rating.toFixed(1)}
+                          </div>
+                          <button 
+                            className="wishlist-btn"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              toggleWishlist(product.id);
+                            }}
+                            aria-label="Add to wishlist"
+                          >
+                            ❤️
+                          </button>
+                        </div>
+                        <h3>{product.name}</h3>
+                        <p className="product-category">{product.category}</p>
+                        <div className="product-price">
+                          <span className="current-price">{formatCurrency(product.discountedPrice || product.price)}</span>
+                          {product.discountPercentage > 0 && (
+                            <span className="original-price">{formatCurrency(product.price)}</span>
+                          )}
+                        </div>
+                        <div className="product-reviews">
+                          ({product.reviewCount} reviews)
+                        </div>
+                      </Link>
+                      <div className="product-actions">
+                        <button 
+                          className="add-to-cart-btn" 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            if (product.inCart) {
+                              handleGoToCart();
+                            } else {
+                              handleAddToCart(product.id, product.name);
+                            }
+                          }}
+                          disabled={product.addingToCart || (product.stockQuantity || 0) === 0}
+                          aria-label={product.inCart ? `Go to cart with ${product.name}` : `Add ${product.name} to cart`}
+                        >
+                          {(product.stockQuantity || 0) === 0 ? 'Out of Stock' : 
+                           (product.addingToCart ? 'Adding...' : 
+                           (product.inCart ? 'Go to Cart' : 'Add to Cart'))}
+                        </button>
+                        <button 
+                          className="compare-btn"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            compareProducts(product.id);
+                          }}
+                          aria-label="Compare product"
+                        >
+                          Compare
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="pagination">
+                    <button 
+                      onClick={() => paginate(currentPage - 1)} 
+                      disabled={currentPage === 1}
+                      className="pagination-btn"
+                    >
+                      Previous
+                    </button>
+                    
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => paginate(pageNum)}
+                          className={`pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                    
+                    <button 
+                      onClick={() => paginate(currentPage + 1)} 
+                      disabled={currentPage === totalPages}
+                      className="pagination-btn"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* No results state */}
+            {!loading && products.length === 0 && (
+              <div className="no-results">
+                <div className="no-results-icon">🔍</div>
+                <h3>No products found</h3>
+                <p>Try adjusting your search or filter criteria</p>
+                <button className="reset-filters-btn" onClick={resetFilters}>
+                  Reset Filters
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

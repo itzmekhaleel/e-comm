@@ -14,6 +14,8 @@ import Profile from './components/Profile';
 import Orders from './components/Orders';
 import Wishlist from './components/Wishlist';
 import Navbar from './components/Navbar';
+import Compare from './components/Compare';
+import Checkout from './components/Checkout';
 
 function App() {
   return (
@@ -34,8 +36,10 @@ function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/wishlist" element={<Wishlist />} />
+                <Route path="/compare" element={<Compare />} />
+                <Route path="/checkout" element={<Checkout />} />
                 {/* Catch-all route for debugging */}
-                <Route path="*" element={<div>Page not found. Available routes: /, /login, /register, /products, /cart, /cart-test, /profile, /orders, /wishlist</div>} />
+                <Route path="*" element={<div>Page not found. Available routes: /, /login, /register, /products, /cart, /cart-test, /profile, /orders, /wishlist, /compare, /checkout</div>} />
               </Routes>
             </main>
           </div>

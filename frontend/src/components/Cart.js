@@ -107,6 +107,10 @@ const Cart = () => {
    * Proceed to checkout
    */
   const proceedToCheckout = () => {
+    if (cartItems.length === 0) {
+      addToast('Your cart is empty', 'warning');
+      return;
+    }
     navigate('/checkout');
   };
 
@@ -245,11 +249,15 @@ const Cart = () => {
                   </div>
                   <div className="summary-row">
                     <span>Shipping:</span>
-                    <span>Free</span>
+                    <span>{calculateTotal() > 500 ? 'FREE' : formatCurrency(50)}</span>
+                  </div>
+                  <div className="summary-row">
+                    <span>Tax (18% GST):</span>
+                    <span>{formatCurrency(calculateTotal() * 0.18)}</span>
                   </div>
                   <div className="summary-row total-row">
                     <span>Total:</span>
-                    <span className="total-price">{formatCurrency(calculateTotal())}</span>
+                    <span className="total-price">{formatCurrency(calculateTotal() + (calculateTotal() > 500 ? 0 : 50) + (calculateTotal() * 0.18))}</span>
                   </div>
                   <div className="summary-actions">
                     <button className="clear-cart-btn" onClick={clearCart}>

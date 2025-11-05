@@ -18,12 +18,22 @@ const ProductDetails = () => {
   const [selectedImage, setSelectedImage] = useState(0);
   const [addingToCart, setAddingToCart] = useState(false);
   const [activeTab, setActiveTab] = useState('description');
+  const [inWishlist, setInWishlist] = useState(false);
+  const [compareList, setCompareList] = useState([]);
   const { addToast } = useToast();
 
   useEffect(() => {
     console.log('Product ID from URL params:', id);
     loadProduct();
     loadRelatedProducts();
+    
+    // Check if product is in wishlist (in a real app, this would come from backend)
+    const wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
+    setInWishlist(wishlist.includes(id));
+    
+    // Load compare list
+    const compare = JSON.parse(localStorage.getItem('compareList') || '[]');
+    setCompareList(compare);
     
     // Listen for currency change events
     const handleCurrencyChange = (event) => {
@@ -119,7 +129,8 @@ const ProductDetails = () => {
       model: `Model-${productId}`,
       warranty: "1 Year Manufacturer Warranty",
       rating: (Math.random() * 1 + 4).toFixed(1), // Rating between 4.0 and 5.0
-      discountPercentage: Math.floor(Math.random() * 26) + 5 // Random discount between 5-30%
+      discountPercentage: Math.floor(Math.random() * 26) + 5, // Random discount between 5-30%
+      reviewCount: Math.floor(Math.random() * 1000) + 100
     };
     
     setProduct(fallbackProduct);
@@ -181,10 +192,11 @@ const ProductDetails = () => {
   };
 
   const handleBuyNow = () => {
-    // In a real application, this would redirect to checkout
-    addToast('Proceeding to checkout...', 'info');
+    // Add to cart first, then proceed to checkout
+    handleAddToCart();
+    // In a real application, this would redirect to checkout after adding to cart
     setTimeout(() => {
-      alert('Redirecting to checkout page...');
+      navigate('/checkout');
     }, 1000);
   };
 
@@ -212,6 +224,84 @@ const ProductDetails = () => {
     if (quantity > 1) {
       setQuantity(quantity - 1);
     }
+  };
+
+  const toggleWishlist = () => {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      addToast('Please login to use wishlist', 'warning');
+      navigate('/login');
+      return;
+    }
+    
+    const wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
+    let newWishlist;
+    
+    if (inWishlist) {
+      // Remove from wishlist
+      newWishlist = wishlist.filter(itemId => itemId !== id);
+      addToast('Removed from wishlist', 'info');
+    } else {
+      // Add to wishlist
+      newWishlist = [...wishlist, id];
+      addToast('Added to wishlist!', 'success');
+    }
+    
+    localStorage.setItem('wishlist', JSON.stringify(newWishlist));
+    setInWishlist(!inWishlist);
+  };
+
+  const toggleCompare = () => {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      addToast('Please login to use comparison', 'warning');
+      navigate('/login');
+      return;
+    }
+    
+    let newCompareList = [...compareList];
+    
+    if (newCompareList.includes(id)) {
+      // Remove from compare list
+      newCompareList = newCompareList.filter(itemId => itemId !== id);
+      addToast('Removed from comparison', 'info');
+    } else {
+      // Add to compare list (max 4 items)
+      if (newCompareList.length >= 4) {
+        addToast('You can compare up to 4 products', 'warning');
+        return;
+      }
+      newCompareList = [...newCompareList, id];
+      addToast('Added to comparison!', 'success');
+    }
+    
+    localStorage.setItem('compareList', JSON.stringify(newCompareList));
+    setCompareList(newCompareList);
+  };
+
+  const shareProduct = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: product.name,
+        text: `Check out this amazing product: ${product.name}`,
+        url: window.location.href
+      }).catch(error => {
+        console.log('Error sharing:', error);
+        copyToClipboard();
+      });
+    } else {
+      copyToClipboard();
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(window.location.href)
+      .then(() => {
+        addToast('Product link copied to clipboard!', 'success');
+      })
+      .catch(err => {
+        addToast('Failed to copy link', 'error');
+      });
   };
 
   if (loading) {
@@ -293,7 +383,17 @@ const ProductDetails = () => {
         
         {/* Product Information Section */}
         <div className="product-info">
-          <h1>{product.name}</h1>
+          <div className="product-header">
+            <h1>{product.name}</h1>
+            <button 
+              className={`wishlist-btn ${inWishlist ? 'active' : ''}`}
+              onClick={toggleWishlist}
+              aria-label={inWishlist ? "Remove from wishlist" : "Add to wishlist"}
+            >
+              {inWishlist ? '❤️ Saved' : '🤍 Save'}
+            </button>
+          </div>
+          
           <p className="product-category">{product.category}</p>
           <div className="product-rating">
             <div className="stars">
@@ -307,6 +407,7 @@ const ProductDetails = () => {
               )}
             </div>
             <span className="rating-count">({product.rating ? product.rating.toFixed(1) : '4.0'} ratings)</span>
+            <span className="review-count">({product.reviewCount || 0} reviews)</span>
           </div>
           
           {/* Price Section with Discount */}
@@ -416,6 +517,22 @@ const ProductDetails = () => {
               disabled={(product.stockQuantity || 0) === 0}
             >
               Buy Now
+            </button>
+            
+            <button 
+              className={`compare-btn ${compareList.includes(id) ? 'active' : ''}`}
+              onClick={toggleCompare}
+              aria-label="Add to comparison"
+            >
+              {compareList.includes(id) ? 'Added to Compare' : 'Compare'}
+            </button>
+            
+            <button 
+              className="share-btn"
+              onClick={shareProduct}
+              aria-label="Share product"
+            >
+              Share
             </button>
           </div>
           
@@ -557,6 +674,41 @@ const ProductDetails = () => {
                     quality and performance. The delivery was also very prompt.
                   </p>
                 </div>
+                
+                <div className="review">
+                  <div className="review-header">
+                    <span className="reviewer-name">Sneha Reddy</span>
+                    <div className="stars">★★★★☆</div>
+                  </div>
+                  <p className="review-date">September 20, 2025</p>
+                  <p className="review-text">
+                    Good product overall. Easy to use and setup. The only minor issue I had was 
+                    with the packaging, but the product itself is excellent.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="add-review">
+                <h3>Write a Review</h3>
+                <form>
+                  <div className="form-group">
+                    <label>Your Rating</label>
+                    <div className="star-rating">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <span key={star} className="star">★</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="review-title">Review Title</label>
+                    <input type="text" id="review-title" className="form-control" />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="review-text">Your Review</label>
+                    <textarea id="review-text" className="form-control" rows="4"></textarea>
+                  </div>
+                  <button type="submit" className="btn btn-primary">Submit Review</button>
+                </form>
               </div>
             </div>
           )}
@@ -632,6 +784,31 @@ const ProductDetails = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+      
+      {/* Compare Bar */}
+      {compareList.length > 0 && (
+        <div className="compare-bar">
+          <div className="compare-bar-content">
+            <span>{compareList.length} product(s) selected for comparison</span>
+            <button 
+              className="view-compare-btn"
+              onClick={() => navigate('/compare')}
+            >
+              View Comparison
+            </button>
+            <button 
+              className="clear-compare-btn"
+              onClick={() => {
+                localStorage.setItem('compareList', JSON.stringify([]));
+                setCompareList([]);
+                addToast('Comparison list cleared', 'info');
+              }}
+            >
+              Clear
+            </button>
           </div>
         </div>
       )}
